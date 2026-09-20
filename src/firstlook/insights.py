@@ -17,9 +17,7 @@ CORRELATION_DISCLAIMER = (
 )
 
 
-def findings_from_quality(
-    issues: list,
-) -> list[Finding]:
+def findings_from_quality(issues: list) -> list[Finding]:
     findings = []
 
     for issue in issues:
@@ -63,13 +61,8 @@ def findings_from_trend(
     if not trend_results:
         return findings
 
-    direction = trend_results.get(
-        "direction"
-    )
-
-    change_pct = trend_results.get(
-        "change_pct"
-    )
+    direction = trend_results.get("direction")
+    change_pct = trend_results.get("change_pct")
 
     if (
         direction == "insufficient_data"
@@ -80,18 +73,13 @@ def findings_from_trend(
     if abs(change_pct) <= 5:
         return findings
 
-    metric_text = (
-        metric
-        if metric
-        else "The metric"
-    )
+    metric_text = metric or "The metric"
 
     if direction == "increasing":
         headline = (
             f"{metric_text} increased by "
             f"{abs(change_pct):.1f}% over time."
         )
-
         recommendation = (
             "Identify the drivers behind the increase "
             "and determine whether the trend is sustainable."
@@ -102,7 +90,6 @@ def findings_from_trend(
             f"{metric_text} decreased by "
             f"{abs(change_pct):.1f}% over time."
         )
-
         recommendation = (
             "Investigate the causes of the decline "
             "and identify segments or periods requiring attention."
@@ -137,10 +124,7 @@ def findings_from_segments(
         return findings
 
     for _, row in segment_results.iterrows():
-
-        spread_pct = float(
-            row["spread_pct"]
-        )
+        spread_pct = float(row["spread_pct"])
 
         if spread_pct > 50:
             importance = 1
@@ -152,47 +136,31 @@ def findings_from_segments(
         segment = row["segment"]
         metric = row["metric"]
 
-        highest_group = row[
-            "highest_group"
-        ]
+        highest_group = row["highest_group"]
+        lowest_group = row["lowest_group"]
 
-        lowest_group = row[
-            "lowest_group"
-        ]
-
-        highest_mean = row[
-            "highest_group_mean"
-        ]
-
-        lowest_mean = row[
-            "lowest_group_mean"
-        ]
-
-        headline = (
-            f"{segment} creates a "
-            f"{spread_pct:.1f}% spread in {metric}."
-        )
-
-        detail = (
-            f"{highest_group} has the highest average "
-            f"{metric} ({highest_mean:.2f}), while "
-            f"{lowest_group} has the lowest "
-            f"({lowest_mean:.2f})."
-        )
-
-        recommendation = (
-            f"Investigate why {segment} differs across "
-            f"these groups and identify practices that "
-            f"could improve lower-performing groups."
-        )
+        highest_mean = row["highest_group_mean"]
+        lowest_mean = row["lowest_group_mean"]
 
         findings.append(
             Finding(
                 importance=importance,
                 category="Segments",
-                headline=headline,
-                detail=detail,
-                recommendation=recommendation,
+                headline=(
+                    f"{segment} creates a "
+                    f"{spread_pct:.1f}% spread in {metric}."
+                ),
+                detail=(
+                    f"{highest_group} has the highest average "
+                    f"{metric} ({highest_mean:.2f}), while "
+                    f"{lowest_group} has the lowest "
+                    f"({lowest_mean:.2f})."
+                ),
+                recommendation=(
+                    f"Investigate why {segment} differs across "
+                    f"these groups and identify practices that "
+                    f"could improve lower-performing groups."
+                ),
             )
         )
 
@@ -208,17 +176,13 @@ def findings_from_correlations(
         return findings
 
     strong_results = correlation_results[
-        correlation_results["strength"]
-        == "strong"
+        correlation_results["strength"] == "strong"
     ]
 
     for _, row in strong_results.iterrows():
-
         column_1 = row["column_1"]
         column_2 = row["column_2"]
-        correlation = float(
-            row["correlation"]
-        )
+        correlation = float(row["correlation"])
 
         direction = (
             "positive"
@@ -226,48 +190,32 @@ def findings_from_correlations(
             else "negative"
         )
 
-        headline = (
-            f"{column_1} and {column_2} "
-            f"have a strong {direction} relationship."
-        )
-
-        detail = (
-            f"Pearson correlation is "
-            f"{correlation:.2f}, indicating a "
-            f"strong statistical relationship."
-        )
-
-        recommendation = (
-            f"Investigate the relationship between "
-            f"{column_1} and {column_2} using business "
-            f"context or controlled analysis."
-        )
-
-        detail = (
-            f"{detail} "
-            f"{CORRELATION_DISCLAIMER}"
-        )
-
         findings.append(
             Finding(
                 importance=2,
                 category="Relationships",
-                headline=headline,
-                detail=detail,
-                recommendation=recommendation,
+                headline=(
+                    f"{column_1} and {column_2} "
+                    f"have a strong {direction} relationship."
+                ),
+                detail=(
+                    f"Pearson correlation is "
+                    f"{correlation:.2f}, indicating a "
+                    f"strong statistical relationship. "
+                    f"{CORRELATION_DISCLAIMER}"
+                ),
+                recommendation=(
+                    f"Investigate the relationship between "
+                    f"{column_1} and {column_2} using business "
+                    f"context or controlled analysis."
+                ),
             )
         )
 
     return findings
 
 
-def findings_from_shape(
-    profile,
-) -> list[Finding]:
-    """
-    Create a low-priority dataset overview finding.
-    """
-
+def findings_from_shape(profile) -> list[Finding]:
     if profile is None:
         return []
 
@@ -302,16 +250,11 @@ def generate_findings(
     profile=None,
     metric: str | None = None,
 ) -> list[Finding]:
-    """
-    Generate and rank deterministic analytical findings.
-    """
 
     findings = []
 
     findings.extend(
-        findings_from_quality(
-            issues or []
-        )
+        findings_from_quality(issues or [])
     )
 
     findings.extend(
@@ -323,9 +266,7 @@ def generate_findings(
 
     if segment_results is not None:
         findings.extend(
-            findings_from_segments(
-                segment_results
-            )
+            findings_from_segments(segment_results)
         )
 
     if correlation_results is not None:
@@ -336,9 +277,7 @@ def generate_findings(
         )
 
     findings.extend(
-        findings_from_shape(
-            profile
-        )
+        findings_from_shape(profile)
     )
 
     findings.sort(
