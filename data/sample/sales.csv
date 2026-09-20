@@ -1,0 +1,11 @@
+order_date,region,channel,revenue,orders
+2025-01-05,Delhi,App,1000,10
+2025-01-12,Delhi,Web,1200,12
+2025-02-05,Delhi,App,1300,13
+2025-02-15,Mumbai,Web,900,9
+2025-03-05,Mumbai,App,950,10
+2025-03-20,Pune,Web,1100,11
+2025-04-05,Delhi,App,1400,14
+2025-04-20,Mumbai,Web,1000,10
+2025-05-05,Pune,App,1250,12
+2025-06-05,Delhi,Web,1500,15
