@@ -33,6 +33,38 @@ class ColumnProfile:
     stats: dict
 
 
+@dataclass
+class DatasetProfile:
+    """Profile information for an entire dataset."""
+
+    n_rows: int
+    n_cols: int
+    n_duplicate_rows: int
+    memory_mb: float
+    columns: list[ColumnProfile]
+
+    def by_type(self, t):
+        """Return all column profiles matching a semantic type."""
+
+        if isinstance(t, SemanticType):
+            t = t.value
+
+        return [
+            column
+            for column in self.columns
+            if column.semantic_type == t
+        ]
+
+    def get(self, name):
+        """Return the profile for a column by name."""
+
+        for column in self.columns:
+            if column.name == name:
+                return column
+
+        return None
+
+
 def infer_semantic_type(
     series: pd.Series,
     column_name: str = "",
@@ -132,18 +164,7 @@ def infer_semantic_type(
             for keyword in date_keywords
         )
 
-        # -------------------------------------------------
         # Date detection
-        # -------------------------------------------------
-        #
-        # Only attempt date parsing when:
-        # 1. Column name strongly suggests date/time, OR
-        # 2. Values are clearly date-like.
-        #
-        # This prevents warnings for columns such as:
-        # city, country, product, category, etc.
-        # -------------------------------------------------
-
         parse_ratio = 0.0
 
         if has_date_name:
@@ -154,19 +175,21 @@ def infer_semantic_type(
                 format="mixed",
             )
 
-            parse_ratio = parsed_dates.notna().mean()
+            parse_ratio = (
+                parsed_dates.notna().mean()
+            )
 
         else:
 
-            # Only attempt parsing for values that
-            # look like dates.
             date_like_mask = values.str.match(
                 r"^\d{4}[-/]\d{1,2}[-/]\d{1,2}"
             )
 
             if date_like_mask.any():
 
-                date_like_values = values[date_like_mask]
+                date_like_values = (
+                    values[date_like_mask]
+                )
 
                 parsed_dates = pd.to_datetime(
                     date_like_values,
@@ -179,7 +202,7 @@ def infer_semantic_type(
                     / len(values)
                 )
 
-        # Date column
+        # Datetime
         if parse_ratio >= 0.95:
             return SemanticType.DATETIME
 
@@ -204,7 +227,7 @@ def infer_semantic_type(
         if average_length > 60:
             return SemanticType.TEXT
 
-        # Otherwise categorical
+        # Categorical
         return SemanticType.CATEGORICAL
 
     # Fallback
@@ -443,7 +466,7 @@ def profile_column(
         stats = {}
 
     # =====================================================
-    # RETURN
+    # RETURN COLUMN PROFILE
     # =====================================================
     return ColumnProfile(
         name=column_name,
@@ -462,4 +485,70 @@ def profile_column(
         ),
         sample_values=sample_values,
         stats=stats,
+    )
+
+
+def profile_dataframe(
+    df: pd.DataFrame,
+) -> DatasetProfile:
+    """Create a profile for an entire pandas DataFrame."""
+
+    # =====================================================
+    # DATASET BASIC INFORMATION
+    # =====================================================
+
+    n_rows = len(df)
+
+    n_cols = len(df.columns)
+
+    # =====================================================
+    # DUPLICATE ROWS
+    # =====================================================
+
+    n_duplicate_rows = int(
+        df.duplicated().sum()
+    )
+
+    # =====================================================
+    # MEMORY USAGE
+    # =====================================================
+
+    memory_bytes = df.memory_usage(
+        deep=True
+    ).sum()
+
+    memory_mb = (
+        memory_bytes / (1024 ** 2)
+    )
+
+    # =====================================================
+    # PROFILE EVERY COLUMN
+    # =====================================================
+
+    columns = []
+
+    for column_name in df.columns:
+
+        column_profile = profile_column(
+            df[column_name],
+            str(column_name),
+        )
+
+        columns.append(
+            column_profile
+        )
+
+    # =====================================================
+    # RETURN DATASET PROFILE
+    # =====================================================
+
+    return DatasetProfile(
+        n_rows=n_rows,
+        n_cols=n_cols,
+        n_duplicate_rows=n_duplicate_rows,
+        memory_mb=round(
+            memory_mb,
+            4,
+        ),
+        columns=columns,
     )
