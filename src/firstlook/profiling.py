@@ -75,23 +75,33 @@ def infer_semantic_type(
 
     non_null = series.dropna()
 
-    # 1. Empty column
+    # =========================================================
+    # 1. EMPTY COLUMN
+    # =========================================================
     if non_null.empty:
         return SemanticType.EMPTY
 
-    # 2. Constant column
+    # =========================================================
+    # 2. CONSTANT COLUMN
+    # =========================================================
     if non_null.nunique(dropna=True) == 1:
         return SemanticType.CONSTANT
 
-    # 3. Boolean dtype
+    # =========================================================
+    # 3. BOOLEAN DTYPE
+    # =========================================================
     if pd.api.types.is_bool_dtype(series):
         return SemanticType.BOOLEAN
 
-    # 4. Datetime dtype
+    # =========================================================
+    # 4. DATETIME DTYPE
+    # =========================================================
     if pd.api.types.is_datetime64_any_dtype(series):
         return SemanticType.DATETIME
 
-    # 5. Boolean-like values
+    # =========================================================
+    # 5. BOOLEAN-LIKE VALUES
+    # =========================================================
     unique_values = {
         str(value).strip().lower()
         for value in non_null.unique()
@@ -112,7 +122,9 @@ def infer_semantic_type(
     ):
         return SemanticType.BOOLEAN
 
-    # 6. Numeric columns
+    # =========================================================
+    # 6. NUMERIC COLUMNS
+    # =========================================================
     if pd.api.types.is_numeric_dtype(series):
 
         unique_count = non_null.nunique()
@@ -122,6 +134,8 @@ def infer_semantic_type(
             "id",
             "key",
             "code",
+            "uuid",
+            "guid",
         )
 
         has_id_name = any(
@@ -129,11 +143,18 @@ def infer_semantic_type(
             for keyword in id_keywords
         )
 
+        # -----------------------------------------------------
         # Numeric identifier
-        if has_id_name and unique_ratio >= 0.95:
+        # -----------------------------------------------------
+        if (
+            has_id_name
+            and unique_ratio >= 0.95
+        ):
             return SemanticType.IDENTIFIER
 
+        # -----------------------------------------------------
         # Low-cardinality integer category
+        # -----------------------------------------------------
         if (
             pd.api.types.is_integer_dtype(series)
             and unique_count <= 10
@@ -143,7 +164,9 @@ def infer_semantic_type(
 
         return SemanticType.NUMERIC
 
-    # 7. String / object columns
+    # =========================================================
+    # 7. STRING / OBJECT COLUMNS
+    # =========================================================
     if (
         pd.api.types.is_string_dtype(series)
         or pd.api.types.is_object_dtype(series)
@@ -151,6 +174,9 @@ def infer_semantic_type(
 
         values = non_null.astype(str).str.strip()
 
+        # -----------------------------------------------------
+        # Date keywords
+        # -----------------------------------------------------
         date_keywords = (
             "date",
             "time",
@@ -164,7 +190,9 @@ def infer_semantic_type(
             for keyword in date_keywords
         )
 
+        # -----------------------------------------------------
         # Date detection
+        # -----------------------------------------------------
         parse_ratio = 0.0
 
         if has_date_name:
@@ -175,9 +203,7 @@ def infer_semantic_type(
                 format="mixed",
             )
 
-            parse_ratio = (
-                parsed_dates.notna().mean()
-            )
+            parse_ratio = parsed_dates.notna().mean()
 
         else:
 
@@ -187,9 +213,9 @@ def infer_semantic_type(
 
             if date_like_mask.any():
 
-                date_like_values = (
-                    values[date_like_mask]
-                )
+                date_like_values = values[
+                    date_like_mask
+                ]
 
                 parsed_dates = pd.to_datetime(
                     date_like_values,
@@ -202,11 +228,16 @@ def infer_semantic_type(
                     / len(values)
                 )
 
+        # -----------------------------------------------------
         # Datetime
+        # -----------------------------------------------------
         if parse_ratio >= 0.95:
             return SemanticType.DATETIME
 
-        # String statistics
+        # =====================================================
+        # STRING STATISTICS
+        # =====================================================
+
         unique_ratio = (
             values.nunique()
             / len(values)
@@ -216,21 +247,75 @@ def infer_semantic_type(
             values.str.len().mean()
         )
 
-        # String identifier
+        # =====================================================
+        # STRING IDENTIFIER DETECTION
+        # =====================================================
+        #
+        # Important:
+        #
+        # A transactional dataset can contain repeated
+        # identifiers.
+        #
+        # Example:
+        #
+        # customer_id
+        #
+        # C00001
+        # C00001
+        # C00001
+        # C00002
+        #
+        # Therefore we should NOT require 95% uniqueness
+        # when the column name clearly indicates an ID.
+        #
+        # =====================================================
+
+        identifier_name = (
+            name == "id"
+            or name.endswith("_id")
+            or name.endswith("_key")
+            or name.endswith("_code")
+            or name.endswith("_uuid")
+            or name.endswith("_guid")
+            or name.startswith("id_")
+            or name.startswith("key_")
+            or name.startswith("code_")
+            or name.startswith("uuid_")
+            or name.startswith("guid_")
+        )
+
+        # -----------------------------------------------------
+        # Named identifier
+        # -----------------------------------------------------
         if (
-            unique_ratio >= 0.95
-            and average_length <= 30
+            identifier_name
+            and average_length <= 50
         ):
             return SemanticType.IDENTIFIER
 
-        # Long text
+        # -----------------------------------------------------
+        # High-cardinality string identifier
+        # -----------------------------------------------------
+        if (
+            unique_ratio >= 0.95
+            and average_length <= 50
+        ):
+            return SemanticType.IDENTIFIER
+
+        # =====================================================
+        # LONG TEXT
+        # =====================================================
         if average_length > 60:
             return SemanticType.TEXT
 
-        # Categorical
+        # =====================================================
+        # CATEGORICAL
+        # =====================================================
         return SemanticType.CATEGORICAL
 
-    # Fallback
+    # =========================================================
+    # 8. FALLBACK
+    # =========================================================
     return SemanticType.CATEGORICAL
 
 
@@ -240,10 +325,14 @@ def profile_column(
 ) -> ColumnProfile:
     """Create a detailed profile for a single dataset column."""
 
-    # Remove missing values
+    # =========================================================
+    # REMOVE MISSING VALUES
+    # =========================================================
     non_null = series.dropna()
 
-    # Basic information
+    # =========================================================
+    # BASIC INFORMATION
+    # =========================================================
     n_rows = len(series)
 
     n_missing = int(
@@ -266,7 +355,9 @@ def profile_column(
         else 0.0
     )
 
-    # Sample values
+    # =========================================================
+    # SAMPLE VALUES
+    # =========================================================
     sample_values = (
         series
         .dropna()
@@ -274,7 +365,9 @@ def profile_column(
         .tolist()
     )
 
-    # Semantic type
+    # =========================================================
+    # SEMANTIC TYPE
+    # =========================================================
     semantic_type = infer_semantic_type(
         series,
         column_name,
@@ -282,9 +375,9 @@ def profile_column(
 
     stats = {}
 
-    # =====================================================
+    # =========================================================
     # NUMERIC
-    # =====================================================
+    # =========================================================
     if semantic_type == SemanticType.NUMERIC:
 
         numeric = pd.to_numeric(
@@ -322,9 +415,9 @@ def profile_column(
                 ),
             }
 
-    # =====================================================
+    # =========================================================
     # CATEGORICAL
-    # =====================================================
+    # =========================================================
     elif semantic_type == SemanticType.CATEGORICAL:
 
         value_counts = (
@@ -362,9 +455,9 @@ def profile_column(
                 },
             }
 
-    # =====================================================
+    # =========================================================
     # DATETIME
-    # =====================================================
+    # =========================================================
     elif semantic_type == SemanticType.DATETIME:
 
         dates = pd.to_datetime(
@@ -388,9 +481,9 @@ def profile_column(
                 "span_days": int(span_days),
             }
 
-    # =====================================================
+    # =========================================================
     # BOOLEAN
-    # =====================================================
+    # =========================================================
     elif semantic_type == SemanticType.BOOLEAN:
 
         value_counts = (
@@ -407,9 +500,9 @@ def profile_column(
             }
         }
 
-    # =====================================================
+    # =========================================================
     # IDENTIFIER
-    # =====================================================
+    # =========================================================
     elif semantic_type == SemanticType.IDENTIFIER:
 
         stats = {
@@ -420,9 +513,9 @@ def profile_column(
             ),
         }
 
-    # =====================================================
+    # =========================================================
     # TEXT
-    # =====================================================
+    # =========================================================
     elif semantic_type == SemanticType.TEXT:
 
         text_values = (
@@ -445,9 +538,9 @@ def profile_column(
                 ),
             }
 
-    # =====================================================
+    # =========================================================
     # CONSTANT
-    # =====================================================
+    # =========================================================
     elif semantic_type == SemanticType.CONSTANT:
 
         stats = {
@@ -458,16 +551,16 @@ def profile_column(
             )
         }
 
-    # =====================================================
+    # =========================================================
     # EMPTY
-    # =====================================================
+    # =========================================================
     elif semantic_type == SemanticType.EMPTY:
 
         stats = {}
 
-    # =====================================================
+    # =========================================================
     # RETURN COLUMN PROFILE
-    # =====================================================
+    # =========================================================
     return ColumnProfile(
         name=column_name,
         dtype=str(series.dtype),
@@ -493,25 +586,25 @@ def profile_dataframe(
 ) -> DatasetProfile:
     """Create a profile for an entire pandas DataFrame."""
 
-    # =====================================================
+    # =========================================================
     # DATASET BASIC INFORMATION
-    # =====================================================
+    # =========================================================
 
     n_rows = len(df)
 
     n_cols = len(df.columns)
 
-    # =====================================================
+    # =========================================================
     # DUPLICATE ROWS
-    # =====================================================
+    # =========================================================
 
     n_duplicate_rows = int(
         df.duplicated().sum()
     )
 
-    # =====================================================
+    # =========================================================
     # MEMORY USAGE
-    # =====================================================
+    # =========================================================
 
     memory_bytes = df.memory_usage(
         deep=True
@@ -521,9 +614,9 @@ def profile_dataframe(
         memory_bytes / (1024 ** 2)
     )
 
-    # =====================================================
+    # =========================================================
     # PROFILE EVERY COLUMN
-    # =====================================================
+    # =========================================================
 
     columns = []
 
@@ -538,9 +631,9 @@ def profile_dataframe(
             column_profile
         )
 
-    # =====================================================
+    # =========================================================
     # RETURN DATASET PROFILE
-    # =====================================================
+    # =========================================================
 
     return DatasetProfile(
         n_rows=n_rows,
